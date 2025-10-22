@@ -1,6 +1,6 @@
-# ipSearcher
+# ReconB
 
-A professional reconnaissance tool designed for network security analysis and penetration testing. ipSearcher automates the process of scanning domains, identifying open ports, detecting services, and enumerating FTP servers.
+A professional reconnaissance tool designed for network security analysis and penetration testing. ReconB automates the process of scanning domains, identifying open ports, detecting services, and enumerating FTP servers.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
@@ -41,8 +41,8 @@ The tool automatically checks for and installs required dependencies:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/photomanai/ipSearcher.git
-cd ipSearcher
+git clone https://github.com/photomanai/ReconB.git
+cd ReconB
 ```
 
 2. Run the tool (dependencies will be automatically installed on first run):
