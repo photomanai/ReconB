@@ -5,14 +5,15 @@ import sys
 import re
 import os
 import ftplib
+import requests
 
 
 def GetUserInput():
     parser = argparse.ArgumentParser(
-        description="Search.py - Works with domain and optional parameters"
+        description="Search.py - Works with Host and optional parameters"
     )
 
-    parser.add_argument("domain", type=str, help="Domain to search")
+    parser.add_argument("host", type=str, help="Host to search")
 
     parser.add_argument("-t", "--test", type=str, help="Test message", default=None)
 
@@ -20,7 +21,7 @@ def GetUserInput():
 
     args = parser.parse_args()
 
-    return {"domain": args.domain, "testMessage": args.test, "aggressiveMode": args.y}
+    return {"host": args.host, "testMessage": args.test, "aggressiveMode": args.y}
 
 
 def checkAndInstall():
@@ -46,9 +47,9 @@ def checkAndInstall():
 
 
 class PortScan:
-    def __init__(self, domain, agressiveMode=False):
-        self.log = "\n\n***************DOMAIN SCAN***************\n\n"
-        self.domain = domain
+    def __init__(self, host, agressiveMode=False):
+        self.log = "\n\n***************HOST SCAN***************\n\n"
+        self.host = host
         self.agressiveMode = agressiveMode
         self.ports = ""
         self.port_services = ""
@@ -57,16 +58,16 @@ class PortScan:
 
         self.log += "==========PORTSCAN==========\n"
         print("==========PORTSCAN==========\n")
-        if not self.domain:
+        if not self.host:
             self.log += "---NOTIFICATION---"
             print("---NOTIFICATION---")
-            self.log += "Please enter Domain"
-            print("Please enter Domain")
+            self.log += "Please enter Host"
+            print("Please enter Host")
             return
         args = [
             "sudo",
             "nmap",
-            self.domain,
+            self.host,
             "-T5",
             "-oN",
             "./results/nmapScan.txt",
@@ -108,16 +109,16 @@ class PortScan:
             print("Pass the agresive Scan\n")
             return
 
-        if not self.domain or not self.ports:
+        if not self.host or not self.ports:
             self.log += "---NOTIFICATION---\n"
             print("---NOTIFICATION---\n")
-            self.log += "Please enter Ports or Domain\n"
-            print("Please enter Ports or Domain\n")
+            self.log += "Please enter Ports or Host\n"
+            print("Please enter Ports or Host\n")
             return
         args = [
             "sudo",
             "nmap",
-            self.domain,
+            self.host,
             "-T5",
             "-A",
             "-oN",
@@ -141,16 +142,16 @@ class PortScan:
 
         self.log += "==========SERVICES==========\n"
         print("==========SERVICES==========\n")
-        if not self.domain or not self.ports:
+        if not self.host or not self.ports:
             self.log += "---NOTIFICATION---"
             print("---NOTIFICATION---")
-            self.log += "Please enter Ports or Domain"
-            print("Please enter Ports or Domain")
+            self.log += "Please enter Ports or Host"
+            print("Please enter Ports or Host")
             return
         args = [
             "sudo",
             "nmap",
-            self.domain,
+            self.host,
             "-T5",
             "-oN",
             "./results/serviceScan.txt",
@@ -283,42 +284,77 @@ class Ftp:
 
 
 class Http:
-    def __init__(self, port=80):
+    def __init__(self, host, port=80):
+        self.log = "***************HTTP SCAN***************\n"
+        self.host = host
         self.port = port
 
-
-def portScan():
-    inputs = GetUserInput()
-    print("***************DOMAIN SCAN***************\n")
-    scan = PortScan(inputs["domain"], inputs["aggressiveMode"])
-    scan.portScan()
-    scan.checkServices()
-    scan.agressiveScan()
-    return (scan.log, scan.port_services)
+    # curl ip:port
+    # curl -L ip:port
+    # curl -I ip:port
+    # curl http://target/robots.txt
 
 
-def ftpScan(port):
-    print("***************FTP SCAN***************\n")
-    inputs = GetUserInput()
-    ftp = Ftp(inputs["domain"], port)
-    ftp.checkAnonymousFtp()
-    ftp.getFiles()
-    return ftp.log
+class Https(Http):
+    def __init__(self):
+        pass
+
+    # echo | openssl s_client -connect ip:port 2>/dev/null | openssl x509 -noout -text
 
 
-def services(services):
-    services_log = ""
-    if "ftp" in services:
-        services_log += ftpScan(services["ftp"])
-    return services_log
+class Services:
+    def __init__(self):
+        self.service_map = {}
+
+    def portScan(self):
+        inputs = GetUserInput()
+        print("***************HOST SCAN***************\n")
+        scan = PortScan(inputs["host"], inputs["aggressiveMode"])
+        scan.portScan()
+        scan.checkServices()
+        scan.agressiveScan()
+        self.service_map = scan.port_services
+        return (scan.log, scan.port_services)
+
+    def ftpScan(self, port):
+        print("***************FTP SCAN***************\n")
+        inputs = GetUserInput()
+        ftp = Ftp(inputs["host"], port)
+        ftp.checkAnonymousFtp()
+        ftp.getFiles()
+        return ftp.log
+
+    def httpScan(self, port):
+        print("***************HTTP SCAN***************\n")
+        inputs = GetUserInput()
+        http = Http(inputs["host"], port)
+        return http.log
+
+    def services(self):
+        services_log = ""
+        try:
+            if "ftp" in self.service_map:
+                services_log += self.ftpScan(self.service_map["ftp"])
+            if "http" in self.service_map:
+                services_log += self.httpScan(self.service_map["http"])
+            if "https" in self.service_map:
+                pass
+        except KeyError as e:
+            print(f"[-] Error: Service {e} not found in self.services")
+            services_log += f"[-] Error: Service {e} not found in self.services\n"
+        except Exception as e:
+            print(f"[-] Error in services method: {e}")
+            services_log += f"[-] Error in services method: {e}\n"
+        return services_log
 
 
 def main():
     log = ""
     checkAndInstall()
-    port_scan = portScan()
+    services_scan = Services()
+    port_scan = services_scan.portScan()
     log += port_scan[0]
-    services_log = services(port_scan[1])
+    services_log = services_scan.services()
     log += services_log
     with open("results/mainLogs.log", "w") as file:
         file.write(log)
