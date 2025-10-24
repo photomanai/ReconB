@@ -6,9 +6,12 @@ import re
 import os
 import ftplib
 import requests
+import json
+import tempfile
 
 
 def GetUserInput():
+    default_output = os.path.join(os.getcwd(), "results")
     parser = argparse.ArgumentParser(
         description="Search.py - Works with Host and optional parameters"
     )
@@ -18,15 +21,29 @@ def GetUserInput():
     parser.add_argument("-t", "--test", type=str, help="Test message", default=None)
 
     parser.add_argument("-y", action="store_true", help="Enable aggressive mode")
-
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="PATH",
+        default=default_output,
+        help=f"Output directory (default: {default_output})",
+    )
     args = parser.parse_args()
 
-    return {"host": args.host, "testMessage": args.test, "aggressiveMode": args.y}
+    return {
+        "host": args.host,
+        "testMessage": args.test,
+        "agressiveMode": args.y,
+        "outputDir": args.output,
+    }
 
 
 def checkAndInstall():
-    if not os.path.exists("./results"):
-        print("Create results dir")
+    inputs = GetUserInput()
+    path = inputs["outputDir"]
+    print(path)
+    if not os.path.exists(path):
+        print("[+] Create results dir")
         os.makedirs("./results")
 
     packages = ["nmap", "dirsearch"]
@@ -47,17 +64,19 @@ def checkAndInstall():
 
 
 class PortScan:
-    def __init__(self, host, agressiveMode=False):
+    def __init__(self, host, agressiveMode=False, outputDir="./results"):
         self.log = "\n\n***************HOST SCAN***************\n\n"
         self.host = host
         self.agressiveMode = agressiveMode
         self.ports = ""
         self.port_services = ""
+        self.outputDir = outputDir
 
     def portScan(self):
 
         self.log += "==========PORTSCAN==========\n"
         print("==========PORTSCAN==========\n")
+        path = os.path.join(self.outputDir, "nmapScan.txt")
         if not self.host:
             self.log += "---NOTIFICATION---"
             print("---NOTIFICATION---")
@@ -70,7 +89,7 @@ class PortScan:
             self.host,
             "-T5",
             "-oN",
-            "./results/nmapScan.txt",
+            path,
             "-vv",
         ]
         scan = subprocess.run(args, capture_output=True, check=True, text=True)
@@ -99,6 +118,7 @@ class PortScan:
         self.log += "==========AGRESIVE SCAN==========\n"
         print("==========AGRESIVE SCAN==========\n")
 
+        path = os.path.join(self.outputDir, "agresiveScan.txt")
         continue_agresive_scan = "y"
         if self.agressiveMode == False:
             continue_agresive_scan = input("Do you Want a Agresive scan? [y/N] ")
@@ -122,11 +142,13 @@ class PortScan:
             "-T5",
             "-A",
             "-oN",
-            "./results/agresiveScan.txt",
+            path,
             "-vv",
             "-p",
             self.ports,
         ]
+        self.log += "[+] Please wait this took a lot time\n"
+        print("[+] Please wait this took a lot time")
         scan = subprocess.run(args, capture_output=True, check=True, text=True)
 
         if scan.stderr:
@@ -135,15 +157,17 @@ class PortScan:
             self.log += scan.stderr + "\n"
             print(scan.stderr + "\n")
 
-        self.log += "If You want see result go ./results/agresiveScan.txt\n"
-        print("If You want see result go ./results/agresiveScan.txt\n")
+        self.log += f"[+] If You want see result go {path}\n"
+        print(f"[+] If You want see result go {path}\n")
 
     def checkServices(self):
 
         self.log += "==========SERVICES==========\n"
         print("==========SERVICES==========\n")
+
+        path = os.path.join(self.outputDir, "serviceScan.txt")
         if not self.host or not self.ports:
-            self.log += "---NOTIFICATION---"
+            self.log += "---NOTIFICATION---\n"
             print("---NOTIFICATION---")
             self.log += "Please enter Ports or Host"
             print("Please enter Ports or Host")
@@ -154,7 +178,7 @@ class PortScan:
             self.host,
             "-T5",
             "-oN",
-            "./results/serviceScan.txt",
+            path,
             "-vv",
             "-p",
             self.ports,
@@ -162,7 +186,7 @@ class PortScan:
         scan = subprocess.run(args, capture_output=True, check=True, text=True)
 
         if scan.stderr:
-            self.log += "---NOTIFICATION---"
+            self.log += "---NOTIFICATION---\n"
             print("---NOTIFICATION---")
             self.log += scan.stderr + "\n"
             print(scan.stderr + "\n")
@@ -180,12 +204,18 @@ class PortScan:
 
 
 class Ftp:
-    def __init__(self, host, port=21, local_dir="results/ftp", timeout=10):
+    def __init__(
+        self,
+        host,
+        port=21,
+        local_dir="results/ftp",
+        timeout=10,
+    ):
         self.log = "\n\n***************FTP SCAN***************\n\n"
         self.port = int(port)
         self.host = host
         self.timeout = timeout
-        self.local_dir = local_dir
+        self.local_dir = os.path.join(local_dir, "ftp")
         self.user = "anonymous"
         self.passwd = "anonymous"
         self.anonymousLogin = False
@@ -284,15 +314,126 @@ class Ftp:
 
 
 class Http:
-    def __init__(self, host, port=80):
-        self.log = "***************HTTP SCAN***************\n"
+    def __init__(
+        self, host, port=80, agressiveMode=False, domain=None, outputDir="./results"
+    ):
+        self.log = "\n***************HTTP SCAN***************\n"
+        self.protocol = "http"
         self.host = host
         self.port = port
+        self.domain = domain
+        self.agressiveMode = agressiveMode
+        self.outputDir = outputDir
 
-    # curl ip:port
-    # curl -L ip:port
-    # curl -I ip:port
-    # curl http://target/robots.txt
+    def robotsTxt(self):
+        self.log += "\n==========ROBOTS.TXT==========\n"
+        print("==========ROBOTS.TXT==========\n")
+
+        if not self.host or not self.port:
+            self.log += "---NOTIFICATION---\n"
+            print("---NOTIFICATION---\n")
+            self.log += "Please enter Port or Host\n"
+            print("Please enter Port or Host\n")
+            return
+        r = requests.get(
+            f"{self.protocol}://{self.host}:{self.port}/robots.txt", timeout=5
+        )
+        if r.status_code == 200:
+            self.log += f"{r.text}\n"
+            print(f"{r.text}")
+        else:
+            print(f"[-] Robots.txt not found: {r.status_code}\n")
+            self.log += f"[-] Robots.txt not found: {r.status_code}\n"
+
+    def getHeader(self):
+        self.log += "\n==========HEADERS==========\n"
+        print("==========HEADERS==========\n")
+        if not self.host or not self.port:
+            self.log += "---NOTIFICATION---\n"
+            print("---NOTIFICATION---\n")
+            self.log += "Please enter Port or Host\n"
+            print("Please enter Port or Host\n")
+            return
+        r = requests.get(f"{self.protocol}://{self.host}:{self.port}", timeout=5)
+        headers = dict(r.headers)
+        self.log += f"[+] StatusCode: {r.status_code}\n"
+        print(f"[+] StatusCode: {r.status_code}")
+        self.log += "[+] Headers:\n"
+        print("[+] Headers")
+        self.log += json.dumps(headers, indent=4) + "\n"
+        print(json.dumps(headers, indent=4))
+
+    def mainPage(self):
+        self.log += "\n==========MAINPAGE==========\n"
+        print("==========MAINPAGE==========\n")
+        path = os.path.join(self.outputDir, "mainPage.bin")
+        if not self.host or not self.port:
+            self.log += "---NOTIFICATION---\n"
+            print("---NOTIFICATION---\n")
+            self.log += "Please enter Port or Host\n"
+            print("Please enter Port or Host\n")
+            return
+
+        self.log += f"If You want see result go {path}\n"
+        print(f"If You want see result go {path}\n")
+        with requests.get(
+            f"{self.protocol}://{self.host}:{self.port}", stream=True, timeout=10
+        ) as r:
+            r.raise_for_status()
+            with open(path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+    def dirsearch(self):
+        self.log += "\n==========DIRSEARCH==========\n"
+        print("==========DIRSEARCH==========\n")
+        path = os.path.join(self.outputDir, "dirsearch.txt")
+        continue_scan = "y"
+        if self.agressiveMode == False:
+            continue_scan = input("Do you Want a Dirsearch? [y/N] ")
+            self.log += f"Do you Want a Dirsearch? [y/N] {continue_scan}\n"
+
+        if continue_scan.lower() != "y":
+            self.log += "Pass the Dirsearch\n"
+            print("Pass the Dirsearch\n")
+            return
+
+        if not self.host or not self.port:
+            self.log += "---NOTIFICATION---\n"
+            print("---NOTIFICATION---\n")
+            self.log += "Please enter Port or Host\n"
+            print("Please enter Port or Host\n")
+            return
+
+        args = [
+            "sudo",
+            "dirsearch",
+            "-u",
+            f"{self.protocol}://{self.host}:{self.port}",
+            "-o",
+            path,
+        ]
+        tmpdir = tempfile.mkdtemp()
+        cwd = os.getcwd()
+
+        self.log += "[+] Please wait this took a lot time\n"
+        print("[+] Please wait this took a lot time")
+
+        try:
+            os.chdir(tmpdir)
+            scan = subprocess.run(args, capture_output=True, check=True, text=True)
+        finally:
+            os.chdir(cwd)
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        self.log += f"[+] If You want see result go {path}\n"
+        print(f"[+] If You want see result go {path}\n")
+
+        if scan.stderr:
+            self.log += "---NOTIFICATION---\n"
+            print("---NOTIFICATION---")
+            self.log += scan.stderr + "\n"
+            print(scan.stderr + "\n")
 
 
 class Https(Http):
@@ -305,11 +446,15 @@ class Https(Http):
 class Services:
     def __init__(self):
         self.service_map = {}
+        self.inputs = GetUserInput()
 
     def portScan(self):
-        inputs = GetUserInput()
         print("***************HOST SCAN***************\n")
-        scan = PortScan(inputs["host"], inputs["aggressiveMode"])
+        scan = PortScan(
+            self.inputs["host"],
+            self.inputs["agressiveMode"],
+            outputDir=self.inputs["outputDir"],
+        )
         scan.portScan()
         scan.checkServices()
         scan.agressiveScan()
@@ -318,16 +463,23 @@ class Services:
 
     def ftpScan(self, port):
         print("***************FTP SCAN***************\n")
-        inputs = GetUserInput()
-        ftp = Ftp(inputs["host"], port)
+        ftp = Ftp(self.inputs["host"], port, local_dir=self.inputs["outputDir"])
         ftp.checkAnonymousFtp()
         ftp.getFiles()
         return ftp.log
 
     def httpScan(self, port):
         print("***************HTTP SCAN***************\n")
-        inputs = GetUserInput()
-        http = Http(inputs["host"], port)
+        http = Http(
+            self.inputs["host"],
+            port,
+            agressiveMode=self.inputs["agressiveMode"],
+            outputDir=self.inputs["outputDir"],
+        )
+        http.robotsTxt()
+        http.getHeader()
+        http.mainPage()
+        http.dirsearch()
         return http.log
 
     def services(self):
