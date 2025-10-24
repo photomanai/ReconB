@@ -440,6 +440,9 @@ class Https(Http):
     def __init__(self):
         pass
 
+    def verify_tls(self):
+        pass
+
     # echo | openssl s_client -connect ip:port 2>/dev/null | openssl x509 -noout -text
 
 
